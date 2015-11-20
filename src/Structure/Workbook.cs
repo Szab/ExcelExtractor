@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 
 namespace Szab.ExcelExtractor
 {
-    class Workbook
+    public class Workbook
     {
         private List<Sheet> _sheets;
 
@@ -26,33 +26,78 @@ namespace Szab.ExcelExtractor
         public readonly string ModifiedBy;
         public readonly DateTime? CreatedOn;
         public readonly DateTime? LastModified;
-        public readonly string OriginalFilePath;
 
-        public List<Sheet> Sheets 
-        { 
+        public Sheet this[int index]
+        {
             get
             {
-                return _sheets;
+                return this.GetSheet(index);
             }
         }
 
-        public Workbook(string path = null, string author = null, string createdOnISO = null, string modifiedBy = null, string modifiedISO = null)
+        public Sheet[] Sheets 
+        { 
+            get
+            {
+                return _sheets.ToArray<Sheet>();
+            }
+        }
+
+        public Workbook(string author = null, string createdOnISO = null, string modifiedBy = null, string modifiedISO = null)
         {
             this.Author = author;
             this.ModifiedBy = modifiedBy;
 
-            if(!string.IsNullOrEmpty(createdOnISO))
+            if (!string.IsNullOrEmpty(createdOnISO))
             {
                 this.CreatedOn = DateTime.Parse(createdOnISO);
             }
 
             if (!string.IsNullOrEmpty(modifiedISO))
             {
-                this.CreatedOn = DateTime.Parse(modifiedISO);
+                this.LastModified = DateTime.Parse(modifiedISO);
             }
 
-            OriginalFilePath = null;
             _sheets = new List<Sheet>();
         }
+
+        public Sheet GetSheet(string sheetName)
+        {
+            return this._sheets.First(x => string.Equals(x.SheetName, sheetName));
+        }
+
+        public void AddSheet(Sheet sheet)
+        {
+            if(sheet == null)
+            {
+                throw new ArgumentNullException("You cannot add null sheet to the workbook");
+            }
+
+            this._sheets.Add(sheet);
+        }
+
+        public Sheet GetSheet(int index)
+        {
+            if(index >= 0 && index < this._sheets.Count)
+            {
+                return this._sheets[index];
+            }   
+            else
+            {
+                return null;
+            }
+        }
+
+        public void RemoveSheet(Sheet sheet)
+        {
+            this._sheets.Remove(sheet);
+        }
+
+        public void RemoveSheet(int index)
+        {
+            this._sheets.RemoveAt(index);
+        }
+
+
     }
 }

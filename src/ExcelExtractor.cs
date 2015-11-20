@@ -16,13 +16,19 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Xml;
 using System.Threading.Tasks;
 
 namespace Szab.ExcelExtractor
 {
     public class ExcelExtractor
     {
-        private ZipArchive _excelFile;
+        public readonly string FilePath;
+        public Workbook Workbook
+        {
+            get;
+            private set;
+        }
 
         private bool ValidateExcelFile(ZipArchive archive)
         {
@@ -30,18 +36,39 @@ namespace Szab.ExcelExtractor
             return true;
         }
 
-        public ExcelExtractor(ZipArchive excelFile)
+        private void ParseWorkbook(string coreXml, string workbookXml)
         {
-            if(excelFile == null)
+            XmlDocument xmlDoc = new XmlDocument();
+            xmlDoc.LoadXml(coreXml);
+
+            string author = this.FindNodeByNameRecursively("dc:creator", xmlDoc.LastChild).InnerText;
+            string modifiedBy = this.FindNodeByNameRecursively("cp:lastModifiedBy", xmlDoc.LastChild).InnerText;
+            string createdOn = this.FindNodeByNameRecursively("dcterms:created", xmlDoc.LastChild).InnerText;
+            string modifiedOn = this.FindNodeByNameRecursively("dcterms:modified", xmlDoc.LastChild).InnerText;
+
+            this.Workbook = new Workbook(author, createdOn, modifiedBy, modifiedOn);
+        }
+
+        private XmlNode FindNodeByNameRecursively(string name, XmlNode node)
+        {
+            XmlNode result = null;
+
+            if(string.Equals(node.Name, name))
             {
-                throw new ArgumentNullException("Passing null archive as a constructor argument is not permitted.");
-            } 
-            else if(!ValidateExcelFile(excelFile))
+                result = node;
+            }
+            else
             {
-                throw new ArgumentException("Provided archive is not a valid MS Excel file.", "excelFile");
+                foreach(XmlNode child in node)
+                {
+                    result = FindNodeByNameRecursively(name, child);
+
+                    if (result != null)
+                        break;
+                }
             }
 
-            _excelFile = excelFile;
+            return result;
         }
 
         public ExcelExtractor(string excelFilePath)
@@ -51,7 +78,31 @@ namespace Szab.ExcelExtractor
                 throw new ArgumentNullException("Passing null paths as a constructor argument is not permitted.");
             }
 
-            _excelFile = ZipFile.Open(excelFilePath, ZipArchiveMode.Read);
+            this.FilePath = excelFilePath;
+
+            using(ZipArchive _excelFile = ZipFile.Open(excelFilePath, ZipArchiveMode.Read))
+            {
+                ZipArchiveEntry coreEntryFile = _excelFile.GetEntry("docProps/core.xml");
+                ZipArchiveEntry workbookFile = _excelFile.Entries.First(x => string.Equals(x.Name, "workbook.xml"));
+
+                string workbookXml;
+                string coreXml;
+
+                using (Stream workbookStream = workbookFile.Open())
+                {
+                    StreamReader workbookStreamReader = new StreamReader(workbookStream);
+                    workbookXml = workbookStreamReader.ReadToEnd();
+                }
+
+                using (Stream coreStream = coreEntryFile.Open())
+                {
+                    StreamReader coreXmlStreamReader = new StreamReader(coreStream);
+                    coreXml = coreXmlStreamReader.ReadToEnd();
+                }
+
+                this.ParseWorkbook(coreXml, workbookXml);
+                
+            }
         }
     }
 }

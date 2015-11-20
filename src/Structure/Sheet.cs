@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 
 namespace Szab.ExcelExtractor
 {
-    class Sheet
+    public class Sheet
     {
         #region Private fields
 
