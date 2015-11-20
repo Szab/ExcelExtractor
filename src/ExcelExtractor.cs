@@ -42,8 +42,9 @@ namespace Szab.ExcelExtractor
             return true;
         }
 
-        private void ParseWorkbook(string coreXml, string workbookXml)
+        private void ParseWorkbook(string coreXml, string workbookXml, string sharedStringsXml)
         {
+            // Load document metadata
             XmlDocument xmlDoc = new XmlDocument();
 
             xmlDoc.LoadXml(coreXml);
@@ -52,8 +53,24 @@ namespace Szab.ExcelExtractor
             string createdOn = this.FindNodeByNameRecursively("dcterms:created", xmlDoc).InnerText;
             string modifiedOn = this.FindNodeByNameRecursively("dcterms:modified", xmlDoc).InnerText;
 
-            this.Workbook = new Workbook(author, createdOn, modifiedBy, modifiedOn);
+            // Load shared strings
+            xmlDoc.LoadXml(sharedStringsXml);
+            XmlNode sstNode = this.FindNodeByNameRecursively("sst", xmlDoc);
+            List<string> sharedStrings = new List<string>();
 
+            foreach (XmlNode sharedString in sstNode)
+            {
+                XmlNode textNode = this.FindNodeByNameRecursively("t", sharedString);
+
+                if (textNode != null)
+                {
+                    sharedStrings.Add(textNode.InnerText);
+                }
+            }
+
+            this.Workbook = new Workbook(author, createdOn, modifiedBy, modifiedOn, sharedStrings);
+
+            // Load used sheets
             xmlDoc.LoadXml(workbookXml);
             XmlNode sheets = this.FindNodeByNameRecursively("sheets", xmlDoc);
 
@@ -79,10 +96,20 @@ namespace Szab.ExcelExtractor
             {
                 foreach(XmlNode cell in row)
                 {
+                    XmlNode type = cell.Attributes.GetNamedItem("t");
+                    string typeName = type != null ? type.InnerText : String.Empty;
                     string cellCoords = cell.Attributes.GetNamedItem("r").InnerText;
                     string value = this.FindNodeByNameRecursively("v", cell).InnerText;
 
-                    sheet[cellCoords] = value;
+                    if (!string.Equals(typeName, "s"))
+                    {
+                        sheet[cellCoords] = value;
+                    }
+                    else
+                    {
+                        int index = int.Parse(value);
+                        sheet[cellCoords] = this.Workbook.GetSharedString(index);
+                    }
                 }
             }
         }
@@ -127,10 +154,12 @@ namespace Szab.ExcelExtractor
                 // Get metadata entries
                 ZipArchiveEntry coreEntryFile = _excelFile.GetEntry("docProps/core.xml");
                 ZipArchiveEntry workbookFile = _excelFile.Entries.First(x => string.Equals(x.Name, "workbook.xml"));
+                ZipArchiveEntry sharedStringsFile = _excelFile.Entries.First(x => string.Equals(x.Name, "sharedStrings.xml"));
 
                 // Read metadata
                 string workbookXml;
                 string coreXml;
+                string sharedStringsXml;
 
                 using (Stream workbookStream = workbookFile.Open())
                 {
@@ -144,7 +173,13 @@ namespace Szab.ExcelExtractor
                     coreXml = coreXmlStreamReader.ReadToEnd();
                 }
 
-                this.ParseWorkbook(coreXml, workbookXml);
+                using (Stream sharedStringsStream = sharedStringsFile.Open())
+                {
+                    StreamReader sharedStringsReader = new StreamReader(sharedStringsStream);
+                    sharedStringsXml = sharedStringsReader.ReadToEnd();
+                }
+
+                this.ParseWorkbook(coreXml, workbookXml, sharedStringsXml);
 
                 // Get all sheet files and populate existing sheet objects
                 Sheet[] usedSheets = this.Workbook.Sheets;

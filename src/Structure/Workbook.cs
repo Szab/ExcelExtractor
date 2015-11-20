@@ -21,6 +21,7 @@ namespace Szab.ExcelExtractor
     public class Workbook
     {
         private List<Sheet> _sheets;
+        private List<string> _sharedStrings = new List<string>();
 
         public string Author
         {
@@ -59,10 +60,15 @@ namespace Szab.ExcelExtractor
             }
         }
 
-        public Workbook(string author = null, string createdOnISO = null, string modifiedBy = null, string modifiedISO = null)
+        public Workbook(string author = null, string createdOnISO = null, string modifiedBy = null, string modifiedISO = null, IEnumerable<string> sharedStrings = null)
         {
             this.Author = author;
             this.ModifiedBy = modifiedBy;
+
+            if (sharedStrings != null)
+            {
+                _sharedStrings = sharedStrings.ToList<string>();
+            }
 
             if (!string.IsNullOrEmpty(createdOnISO))
             {
@@ -77,11 +83,6 @@ namespace Szab.ExcelExtractor
             _sheets = new List<Sheet>();
         }
 
-        public Sheet GetSheet(string sheetName)
-        {
-            return this._sheets.First(x => string.Equals(x.SheetName, sheetName));
-        }
-
         public void AddSheet(Sheet sheet)
         {
             if(sheet == null)
@@ -92,12 +93,35 @@ namespace Szab.ExcelExtractor
             this._sheets.Add(sheet);
         }
 
+        public void AddSharedString(string sharedString)
+        {
+            this._sharedStrings.Add(sharedString);
+        }
+
+                public Sheet GetSheet(string sheetName)
+        {
+            return this._sheets.First(x => string.Equals(x.SheetName, sheetName));
+        }
+
+
         public Sheet GetSheet(int index)
         {
             if(index >= 0 && index < this._sheets.Count)
             {
                 return this._sheets[index];
             }   
+            else
+            {
+                return null;
+            }
+        }
+
+        public string GetSharedString(int index)
+        {
+            if(index >= 0 && index < this._sharedStrings.Count)
+            {
+                return this._sharedStrings[index];
+            }
             else
             {
                 return null;
@@ -114,6 +138,15 @@ namespace Szab.ExcelExtractor
             this._sheets.RemoveAt(index);
         }
 
+        public void RemoveSharedString(string sharedString)
+        {
+            this._sharedStrings.Remove(sharedString);
+        }
+
+        public void RemoveSharedString(int index)
+        {
+            this._sharedStrings.RemoveAt(index);
+        }
 
     }
 }
