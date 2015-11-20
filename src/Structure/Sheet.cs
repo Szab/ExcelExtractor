@@ -28,7 +28,17 @@ namespace Szab.ExcelExtractor
 
         #region Properties
 
-        public readonly string SheetName;
+        public string SheetName
+        {
+            get;
+            private set;
+        }
+
+        public int SheetId
+        {
+            get;
+            private set;
+        }
 
         public string this[string index]
         {
@@ -59,8 +69,10 @@ namespace Szab.ExcelExtractor
 
         #region Methods
 
-        public Sheet()
+        public Sheet(string sheetName = null, int sheetId = -1)
         {
+            this.SheetName = sheetName;
+            this.SheetId = sheetId;
             this._values = new Dictionary<string, string>();
         }
 

@@ -23,12 +23,18 @@ namespace Szab.ExcelExtractor
 {
     public class ExcelExtractor
     {
+        #region Properties
+
         public readonly string FilePath;
         public Workbook Workbook
         {
             get;
             private set;
         }
+
+        #endregion
+
+        #region Private methods
 
         private bool ValidateExcelFile(ZipArchive archive)
         {
@@ -39,14 +45,46 @@ namespace Szab.ExcelExtractor
         private void ParseWorkbook(string coreXml, string workbookXml)
         {
             XmlDocument xmlDoc = new XmlDocument();
-            xmlDoc.LoadXml(coreXml);
 
-            string author = this.FindNodeByNameRecursively("dc:creator", xmlDoc.LastChild).InnerText;
-            string modifiedBy = this.FindNodeByNameRecursively("cp:lastModifiedBy", xmlDoc.LastChild).InnerText;
-            string createdOn = this.FindNodeByNameRecursively("dcterms:created", xmlDoc.LastChild).InnerText;
-            string modifiedOn = this.FindNodeByNameRecursively("dcterms:modified", xmlDoc.LastChild).InnerText;
+            xmlDoc.LoadXml(coreXml);
+            string author = this.FindNodeByNameRecursively("dc:creator", xmlDoc).InnerText;
+            string modifiedBy = this.FindNodeByNameRecursively("cp:lastModifiedBy", xmlDoc).InnerText;
+            string createdOn = this.FindNodeByNameRecursively("dcterms:created", xmlDoc).InnerText;
+            string modifiedOn = this.FindNodeByNameRecursively("dcterms:modified", xmlDoc).InnerText;
 
             this.Workbook = new Workbook(author, createdOn, modifiedBy, modifiedOn);
+
+            xmlDoc.LoadXml(workbookXml);
+            XmlNode sheets = this.FindNodeByNameRecursively("sheets", xmlDoc);
+
+            foreach(XmlNode sheet in sheets.ChildNodes)
+            {
+                string sheetName = sheet.Attributes.GetNamedItem("name").InnerText;
+                string sheetId = sheet.Attributes.GetNamedItem("sheetId").InnerText;
+                int sheetIdInt = -1;
+                int.TryParse(sheetId, out sheetIdInt);
+
+                this.Workbook.AddSheet(new Sheet(sheetName, sheetIdInt));
+            }
+        }
+
+        private void PopulateSheet(Sheet sheet, string sheetXml)
+        {
+            XmlDocument xmlDoc = new XmlDocument();
+            xmlDoc.LoadXml(sheetXml);
+
+            XmlNode sheetData = this.FindNodeByNameRecursively("sheetData", xmlDoc);
+            
+            foreach(XmlNode row in sheetData)
+            {
+                foreach(XmlNode cell in row)
+                {
+                    string cellCoords = cell.Attributes.GetNamedItem("r").InnerText;
+                    string value = this.FindNodeByNameRecursively("v", cell).InnerText;
+
+                    sheet[cellCoords] = value;
+                }
+            }
         }
 
         private XmlNode FindNodeByNameRecursively(string name, XmlNode node)
@@ -71,6 +109,10 @@ namespace Szab.ExcelExtractor
             return result;
         }
 
+        #endregion
+
+        #region Public methods
+
         public ExcelExtractor(string excelFilePath)
         {
             if(string.IsNullOrEmpty(excelFilePath))
@@ -82,9 +124,11 @@ namespace Szab.ExcelExtractor
 
             using(ZipArchive _excelFile = ZipFile.Open(excelFilePath, ZipArchiveMode.Read))
             {
+                // Get metadata entries
                 ZipArchiveEntry coreEntryFile = _excelFile.GetEntry("docProps/core.xml");
                 ZipArchiveEntry workbookFile = _excelFile.Entries.First(x => string.Equals(x.Name, "workbook.xml"));
 
+                // Read metadata
                 string workbookXml;
                 string coreXml;
 
@@ -101,8 +145,25 @@ namespace Szab.ExcelExtractor
                 }
 
                 this.ParseWorkbook(coreXml, workbookXml);
+
+                // Get all sheet files and populate existing sheet objects
+                Sheet[] usedSheets = this.Workbook.Sheets;
+                IEnumerable<ZipArchiveEntry> sheetFiles = _excelFile.Entries.Where(x => x.FullName.StartsWith("xl/worksheets"));
+                
+                foreach(Sheet sheet in usedSheets)
+                {
+                    ZipArchiveEntry sheetFile = sheetFiles.First(x => string.Equals(x.Name, "sheet"+sheet.SheetId+".xml"));
+
+                    using (Stream sheetStream = sheetFile.Open())
+                    {
+                        StreamReader sheetXmlReader = new StreamReader(sheetStream);
+                        this.PopulateSheet(sheet, sheetXmlReader.ReadToEnd());
+                    }
+                }
                 
             }
         }
+
+        #endregion
     }
 }

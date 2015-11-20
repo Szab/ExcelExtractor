@@ -22,10 +22,26 @@ namespace Szab.ExcelExtractor
     {
         private List<Sheet> _sheets;
 
-        public readonly string Author;
-        public readonly string ModifiedBy;
-        public readonly DateTime? CreatedOn;
-        public readonly DateTime? LastModified;
+        public string Author
+        {
+            get;
+            private set;
+        }
+        public string ModifiedBy
+        {
+            get;
+            private set;
+        }
+        public DateTime? CreatedOn
+        {
+            get;
+            private set;
+        }
+        public DateTime? LastModified
+        {
+            get;
+            private set;
+        }
 
         public Sheet this[int index]
         {
