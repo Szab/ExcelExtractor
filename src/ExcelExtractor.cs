@@ -19,10 +19,14 @@ using System.Text;
 using System.Xml;
 using System.Threading.Tasks;
 
-namespace Szab.ExcelExtractor
+namespace Szab.Excel
 {
-    public class ExcelExtractor
+    public class ValueExtractor
     {
+        #region Private fields
+        private Dictionary<string, string> _relationships;
+        #endregion
+
         #region Properties
 
         public readonly string FilePath;
@@ -42,7 +46,7 @@ namespace Szab.ExcelExtractor
             return true;
         }
 
-        private void ParseWorkbook(string coreXml, string workbookXml, string sharedStringsXml)
+        private void ParseWorkbook(string coreXml, string workbookXml, string sharedStringsXml, string relationshipsXml)
         {
             // Load document metadata
             XmlDocument xmlDoc = new XmlDocument();
@@ -52,6 +56,18 @@ namespace Szab.ExcelExtractor
             string modifiedBy = this.FindNodeByNameRecursively("cp:lastModifiedBy", xmlDoc).InnerText;
             string createdOn = this.FindNodeByNameRecursively("dcterms:created", xmlDoc).InnerText;
             string modifiedOn = this.FindNodeByNameRecursively("dcterms:modified", xmlDoc).InnerText;
+
+            // Load relationships
+            xmlDoc.LoadXml(relationshipsXml);
+            XmlNode relationships = this.FindNodeByNameRecursively("Relationships", xmlDoc);
+
+            foreach(XmlNode relationship in relationships)
+            {
+                string relationshipId = relationship.Attributes.GetNamedItem("Id").InnerText;
+                string relationshipTarget = relationship.Attributes.GetNamedItem("Target").InnerText;
+
+                this._relationships.Add(relationshipId, relationshipTarget);
+            }
 
             // Load shared strings
             xmlDoc.LoadXml(sharedStringsXml);
@@ -77,11 +93,9 @@ namespace Szab.ExcelExtractor
             foreach(XmlNode sheet in sheets.ChildNodes)
             {
                 string sheetName = sheet.Attributes.GetNamedItem("name").InnerText;
-                string sheetId = sheet.Attributes.GetNamedItem("sheetId").InnerText;
-                int sheetIdInt = -1;
-                int.TryParse(sheetId, out sheetIdInt);
+                string sheetId = sheet.Attributes.GetNamedItem("r:id").InnerText;
 
-                this.Workbook.AddSheet(new Sheet(sheetName, sheetIdInt));
+                this.Workbook.AddSheet(new Sheet(sheetName, sheetId));
             }
         }
 
@@ -99,7 +113,8 @@ namespace Szab.ExcelExtractor
                     XmlNode type = cell.Attributes.GetNamedItem("t");
                     string typeName = type != null ? type.InnerText : String.Empty;
                     string cellCoords = cell.Attributes.GetNamedItem("r").InnerText;
-                    string value = this.FindNodeByNameRecursively("v", cell).InnerText;
+                    XmlNode cellValue = this.FindNodeByNameRecursively("v", cell);
+                    string value = cellValue != null ? cellValue.InnerText : null;
 
                     if (!string.Equals(typeName, "s"))
                     {
@@ -136,17 +151,31 @@ namespace Szab.ExcelExtractor
             return result;
         }
 
+        private string GetXmlFromFile(ZipArchiveEntry entry)
+        {
+            string result;
+
+            using (Stream stream = entry.Open())
+            {
+                StreamReader streamReader = new StreamReader(stream);
+                result = streamReader.ReadToEnd();
+            }
+
+            return result;
+        }
+
         #endregion
 
         #region Public methods
 
-        public ExcelExtractor(string excelFilePath)
+        public ValueExtractor(string excelFilePath)
         {
             if(string.IsNullOrEmpty(excelFilePath))
             {
                 throw new ArgumentNullException("Passing null paths as a constructor argument is not permitted.");
             }
 
+            this._relationships = new Dictionary<string, string>();
             this.FilePath = excelFilePath;
 
             using(ZipArchive _excelFile = ZipFile.Open(excelFilePath, ZipArchiveMode.Read))
@@ -155,31 +184,16 @@ namespace Szab.ExcelExtractor
                 ZipArchiveEntry coreEntryFile = _excelFile.GetEntry("docProps/core.xml");
                 ZipArchiveEntry workbookFile = _excelFile.Entries.First(x => string.Equals(x.Name, "workbook.xml"));
                 ZipArchiveEntry sharedStringsFile = _excelFile.Entries.First(x => string.Equals(x.Name, "sharedStrings.xml"));
+                ZipArchiveEntry relationshipsFile = _excelFile.GetEntry("xl/_rels/workbook.xml.rels");
 
                 // Read metadata
-                string workbookXml;
-                string coreXml;
-                string sharedStringsXml;
+                string workbookXml = this.GetXmlFromFile(workbookFile);
+                string coreXml = this.GetXmlFromFile(coreEntryFile);
+                string sharedStringsXml = this.GetXmlFromFile(sharedStringsFile);
+                string relationshipsXml = this.GetXmlFromFile(relationshipsFile);
 
-                using (Stream workbookStream = workbookFile.Open())
-                {
-                    StreamReader workbookStreamReader = new StreamReader(workbookStream);
-                    workbookXml = workbookStreamReader.ReadToEnd();
-                }
 
-                using (Stream coreStream = coreEntryFile.Open())
-                {
-                    StreamReader coreXmlStreamReader = new StreamReader(coreStream);
-                    coreXml = coreXmlStreamReader.ReadToEnd();
-                }
-
-                using (Stream sharedStringsStream = sharedStringsFile.Open())
-                {
-                    StreamReader sharedStringsReader = new StreamReader(sharedStringsStream);
-                    sharedStringsXml = sharedStringsReader.ReadToEnd();
-                }
-
-                this.ParseWorkbook(coreXml, workbookXml, sharedStringsXml);
+                this.ParseWorkbook(coreXml, workbookXml, sharedStringsXml, relationshipsXml);
 
                 // Get all sheet files and populate existing sheet objects
                 Sheet[] usedSheets = this.Workbook.Sheets;
@@ -187,7 +201,7 @@ namespace Szab.ExcelExtractor
                 
                 foreach(Sheet sheet in usedSheets)
                 {
-                    ZipArchiveEntry sheetFile = sheetFiles.First(x => string.Equals(x.Name, "sheet"+sheet.SheetId+".xml"));
+                    ZipArchiveEntry sheetFile = sheetFiles.First(x => string.Equals(x.FullName, "xl/"+this._relationships[sheet.SheetId]));
 
                     using (Stream sheetStream = sheetFile.Open())
                     {

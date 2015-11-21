@@ -16,7 +16,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Szab.ExcelExtractor
+namespace Szab.Excel
 {
     public class Sheet
     {
@@ -34,7 +34,7 @@ namespace Szab.ExcelExtractor
             private set;
         }
 
-        public int SheetId
+        public string SheetId
         {
             get;
             private set;
@@ -69,7 +69,7 @@ namespace Szab.ExcelExtractor
 
         #region Methods
 
-        public Sheet(string sheetName = null, int sheetId = -1)
+        public Sheet(string sheetName = null, string sheetId = null)
         {
             this.SheetName = sheetName;
             this.SheetId = sheetId;

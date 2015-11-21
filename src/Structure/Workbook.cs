@@ -16,7 +16,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Szab.ExcelExtractor
+namespace Szab.Excel
 {
     public class Workbook
     {
